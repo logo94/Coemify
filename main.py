@@ -1,17 +1,26 @@
 # main.py
-import os
 
+# Default
+import os
+from pathlib import Path
+import uuid
+
+# FastAPI
 from fastapi import FastAPI, Response, Request, File, UploadFile, HTTPException, Form
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import PlainTextResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.concurrency import run_in_threadpool
+
+# Slowapi
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 
+# Utils
 from app.script.settings import settings
 from app.script.ssh_utils import upload_sftp
 from app.script.metadata import extract_metadata, update_metadata
@@ -73,6 +82,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # ------------------------------
 # Upload config
 # ------------------------------
+UPLOAD_DIR = Path(settings.UPLOAD_DIR).resolve()
 MAX_SIZE = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 # ------------------------------
@@ -134,28 +144,31 @@ async def search_duplicates(query: str):
 # ------------------------------
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile, request: Request):
+    
+    # Check estensione file
     if not file.content_type.startswith("audio/"):
         raise HTTPException(400, "Tipo file non valido")
+    
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    temp_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+    filename = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    temp_path = UPLOAD_DIR / filename
+    
     contents = await file.read()
-    with open(temp_path, "wb") as f:
-        f.write(contents)
+    temp_path.write_bytes(contents)
 
     metadata = extract_metadata(temp_path)
-
     duplicates = check_navidrome(metadata)
-    
     artists, albums, genres = get_artists_albums_genres()
 
-    return JSONResponse({
+    return {
         "metadata": metadata,
         "artists": artists,
         "albums": albums,
         "genres": genres,
         "duplicates": duplicates,
-        "temp_file": temp_path
-    })
+        "temp_file": filename
+    }
     
 # ------------------------------
 # Upload finale e SFTP
@@ -174,42 +187,42 @@ async def upload_final(
 ):
     
     # Verifica che il file temporaneo esista
-    filepath = os.path.join(app_dir, temp_file) 
+    filepath = (UPLOAD_DIR / temp_file).resolve()
     
-    # Verifica che il file temporaneo esista
-    if not temp_file or not os.path.exists(filepath):
-        raise HTTPException(400, f"File temporaneo non trovato: {filepath}")
-
+    if not filepath.is_file() or UPLOAD_DIR not in filepath.parents:
+        raise HTTPException(400, "Percorso file non valido")    
+    
     # Se è presente una copertura, ottieni i dati dell'immagine
-    cover_data = None
-    if cover:
-        cover_data = await cover.read()
-
-    # Aggiungi i metadati al file
-    update_metadata(filepath, {
-        "title": title,
-        "artist": artist,
-        "album": album,
-        "genre": genre,
-        "duration": duration,
-        "release_date": release_date
-    }, cover_data)
-
-    # Caricamento del file via SFTP
+    cover_data = await cover.read() if cover else None
+    
     try:
-        upload_sftp(local_file=filepath, artist=artist, title=title)
-    except Exception as e:
-        raise HTTPException(500, f"Upload SFTP fallito: {str(e)}")
+        await run_in_threadpool(
+            update_metadata,
+            filepath,
+            {
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "genre": genre,
+                "duration": duration,
+                "release_date": release_date
+            },
+            cover_data
+        )
+        
+        await run_in_threadpool(
+            upload_sftp,
+            filepath,
+            artist,
+            title
+        )
+        
     finally:
-        for file in os.listdir(settings.UPLOAD_DIR):
-            file_path = os.path.join(settings.UPLOAD_DIR, file)
-            
-            # Verifica che sia un file e non una directory
-            if os.path.isfile(file_path):
+        for f in UPLOAD_DIR.iterdir():
+            if f.is_file():
                 try:
-                    os.remove(file_path)  # Rimuovi il file
-                    print(f"File rimosso: {file_path}")
+                    f.unlink()
                 except Exception as e:
-                    print(f"Errore durante la rimozione del file {file_path}: {e}")
+                    print(f"Errore rimuovendo {f}: {e}")
 
     return JSONResponse({"message": "Upload completato con successo!"})

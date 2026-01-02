@@ -1,2 +1,4 @@
 .env
 pyenv
+files/*.mp3
+__pycache__

@@ -53,7 +53,7 @@ async function loadArtistsAndAlbums(data) {
     try {
         const artists = data.artists || [];
         const albums = data.albums || [];
-        const genres = data.genres || []; // nuova lista dei generi
+        const genres = data.genres || [];
 
         // Popola i datalist per artisti
         const artistList = document.getElementById("artists");
@@ -219,69 +219,109 @@ async function checkDuplicates() {
 }
 
 async function searchMetadata() {
-    const title = document.getElementById("title").value; // Recupera il titolo dal form
-    const artist = document.getElementById("artist").value; // Recupera l'artista dal form
-    const album = document.getElementById("album").value; // Recupera l'album dal form
-    
-    if (!title || !artist) {
-        alert("Per favore, inserisci il titolo e l'artista prima di cercare i metadati.");
-        return;
-    }
+    const title = document.getElementById("title").value.trim();
+    const artist = document.getElementById("artist").value.trim();
 
-    const query = `${title} ${artist}`;
-    
+    if (!title || !artist) return alert("Inserisci titolo e artista.");
+
+    const query = `recording:${title} AND artist:${artist}`;
+    const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=25`;
+
     try {
-        // Fai la richiesta all'API di MusicBrainz per cercare il brano
-        const response = await fetch(`https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json`);
-        
-        if (!response.ok) {
-            throw new Error('Errore nella ricerca dei metadati.');
-        }
-        
+        const response = await fetch(url);
         const data = await response.json();
-        
-        if (data.recordings && data.recordings.length > 0) {
-            const metadata = data.recordings[0]; // Prendi il primo risultato trovato
-            
-            // Popola i campi con i metadati trovati e applica la classe 'autopopulated'
-            if (metadata.title) {
-                document.getElementById("title").value = metadata.title;
-                document.getElementById("title").classList.add("autopopulated");
-            }
-            
-            if (metadata.artist) {
-                document.getElementById("artist").value = metadata.artist.name;
-                document.getElementById("artist").classList.add("autopopulated");
-            }
-            
-            if (metadata.releases && metadata.releases[0] && metadata.releases[0].title) {
-                document.getElementById("album").value = metadata.releases[0].title;
-                document.getElementById("album").classList.add("autopopulated");
-            }
-            
-            if (metadata.genres && metadata.genres.length > 0) {
-                document.getElementById("genre").value = metadata.genres[0];
-                document.getElementById("genre").classList.add("autopopulated");
-            }
-
-            if (metadata['release-date']) {
-                document.getElementById("release_date").value = metadata['release-date'];
-                document.getElementById("release_date").classList.add("autopopulated");
-            }
-
-            // Imposta l'immagine di copertura se disponibile
-            if (metadata.releases && metadata.releases[0] && metadata.releases[0].image_url) {
-                document.getElementById("coverImg").src = metadata.releases[0].image_url;
-            }
-
-        } else {
-            alert("Nessun metadato trovato su MusicBrainz.");
+        if (!data.recordings || data.recordings.length === 0) {
+            alert("Nessun metadato trovato.");
+            return;
         }
+
+        const candidatesDiv = document.getElementById("metadataCandidates");
+        candidatesDiv.innerHTML = "";
+
+        data.recordings.forEach((rec, idx) => {
+            
+            const artistName = rec["artist-credit"]?.[0]?.name || "-";
+            const albumName = rec.releases?.[0]?.title || "-";
+            const releaseDate = rec.releases?.[0]?.date || "-";
+            const genre = rec.tags?.[0]?.name || "-";
+            
+            let coverUrl = "/static/img/default.png";
+            if (rec.releases && rec.releases.length > 0) {
+                const releaseId = rec.releases[0].id;
+                if (releaseId) {
+                    coverUrl = `https://coverartarchive.org/release/${releaseId}/front-150`;
+                }
+            }
+
+            const card = document.createElement("div");
+            card.className = "candidate-card d-flex align-items-center p-2 mb-2";
+
+            card.innerHTML = `
+                <img src="${coverUrl}" class="cover-img" onerror="this.src='/static/img/default.png'" />
+                <div class="candidate-info ms-3">
+                    <h6 class="mb-1">${rec.title}</h6>
+                    <p class="mb-0"><strong>Artista:</strong> ${artistName}</p>
+                    <p class="mb-0"><strong>Album:</strong> ${albumName}</p>
+                    <p class="mb-0"><strong>Genere:</strong> ${genre}</p>
+                    <p class="mb-0"><strong>Anno:</strong> ${releaseDate}</p>
+                </div>
+                <button class="btn btn-sm btn-primary ms-auto select-candidate" data-index="${idx}">Seleziona</button>
+            `;
+
+            candidatesDiv.appendChild(card);
+        });
+
+
+        // Mostra il modal
+        const modal = new bootstrap.Modal(document.getElementById("metadataModal"));
+        modal.show();
+
+        // Aggiungi listener ai bottoni "Seleziona"
+        candidatesDiv.querySelectorAll(".select-candidate").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const idx = btn.dataset.index;
+                const candidate = data.recordings[idx];
+
+                // Popola solo i campi aggiuntivi
+                document.getElementById("album").value = candidate.releases?.[0]?.title || "";
+                document.getElementById("genre").value = candidate.tags?.[0]?.name || "";
+                document.getElementById("release_date").value = candidate.releases?.[0]?.date || "";
+                
+                if (candidate.releases?.[0]?.id) {
+                    const coverUrl = `https://coverartarchive.org/release/${candidate.releases[0].id}/front-250`;
+                    
+                    // Fetch dell'immagine come Blob
+                    fetch(coverUrl)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], "cover.jpg", { type: "image/jpeg" });
+                            const coverInput = document.getElementById("coverFile");
+                            
+                            // Aggiorna il file input
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(file);
+                            coverInput.files = dataTransfer.files;
+
+                            // Aggiorna anche l'anteprima
+                            document.getElementById("coverImg").src = coverUrl;
+                        });
+                } else {
+                    document.getElementById("coverImg").src = "/static/img/default.png";
+                }
+
+
+                modal.hide();
+            });
+        });
+
     } catch (error) {
-        console.error("Errore nella ricerca su MusicBrainz:", error);
+        console.error(error);
         alert("Errore nella ricerca dei metadati.");
     }
 }
+
+
+
 
 async function sendFinal(event) {
     event.preventDefault();

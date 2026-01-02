@@ -7,6 +7,7 @@ from mutagen.mp3 import MP3
 # ------------------------
 def extract_metadata(file_path: str):
     audio = MP3(file_path, ID3=ID3)
+    
     metadata = {
         "title": str(audio.get("TIT2", [""])[0]),
         "artist": str(audio.get("TPE1", [""])[0]),
@@ -14,20 +15,20 @@ def extract_metadata(file_path: str):
         "duration": int(audio.info.length),
         "genre": str(audio.get("TCON", [""])[0]),
         "release_date": str(audio.get("TDRC", [""])[0]),
+        "cover": None
     }
 
     # Estrazione e codifica in base64 della copertina (se presente)
-    metadata["cover"] = None
-    tags = audio.tags
-    for tag in tags.values():
-        if isinstance(tag, APIC):
-            img_data = tag.data  # qui hai i bytes dell'immagine
-            mime = tag.mime    # es: 'image/jpeg'
-            metadata["cover"] = f"data:{mime};base64,{base64.b64encode(img_data).decode()}"
-            break
-        else:
-            metadata["cover"] = None
-            mime = None
+    if audio.tags:
+        for tag in audio.tags.values():
+            if isinstance(tag, APIC):
+                img_data = tag.data
+                mime = tag.mime
+                metadata["cover"] = (
+                    f"data:{mime};base64,"
+                    f"{base64.b64encode(img_data).decode()}"
+                )
+                break
         
     
     return metadata
@@ -65,6 +66,8 @@ def update_metadata(file_path, data, cover_data=None):
 
     # Se la copertura è presente, aggiungi la copertura
     if cover_data:
+        audio.tags.delall("APIC")
+        
         audio["APIC"] = APIC(
             encoding=3,  # UTF-8
             mime="image/jpeg",  # Tipo immagine (JPEG)

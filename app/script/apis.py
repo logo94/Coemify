@@ -65,7 +65,7 @@ def get_artists_albums_genres():
             for song in data["subsonic-response"]["searchResult3"]["song"]:
                 artist = song.get("artist")
                 album = song.get("album")
-                genre = song.get("genre")  # aggiunto
+                genre = song.get("genre")
                 
                 if artist:
                     artists.add(artist)
