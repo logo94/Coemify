@@ -25,7 +25,7 @@ from slowapi.errors import RateLimitExceeded
 from app.script.settings import settings
 from app.script.ssh_utils import upload_sftp
 from app.script.metadata import extract_metadata, update_metadata
-from app.script.apis import check_navidrome, get_artists_albums_genres
+from app.script.apis import check_navidrome, get_artists_albums_genres, get_navidrome_image
 
 # ------------------------------
 # FastAPI + Middleware
@@ -129,16 +129,23 @@ def dashboard(request: Request):
 # Cerca duplicati su Navidrome
 # ------------------------------
 @app.get("/search-duplicates")
-async def search_duplicates(query: str):
+async def search_duplicates(artist: str):
     """Ricerca duplicati per titolo e artista"""
     metadata = {
-        "title": query.split(" ")[-1],
-        "artist": " ".join(query.split(" ")[:-1]), 
+        "artist": artist,
     }
 
     duplicates = check_navidrome(metadata)
     return {"duplicates": duplicates}
 
+
+@app.get("/navidrome/cover/{cover_id}")
+def navidrome_cover(cover_id: str, size: int = 250):
+    r = get_navidrome_image(cover_id, size)
+    return Response(
+        content=r.content,
+        media_type=r.headers.get("Content-Type", "image/jpeg")
+    )
 
 # ------------------------------
 # Upload temporaneo + estrazione metadati
@@ -146,9 +153,14 @@ async def search_duplicates(query: str):
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile, request: Request):
     
-    # Check estensione file
-    if not file.content_type.startswith("audio/"):
-        raise HTTPException(400, "Tipo file non valido")
+    # Check MIME type (solo MP3)
+    if file.content_type != "audio/mpeg":
+        raise HTTPException(400, "Sono consentiti solo file MP3")
+
+    # Check estensione (solo .mp3)
+    ext = Path(file.filename).suffix.lower()
+    if ext != ".mp3":
+        raise HTTPException(400, "Estensione non valida. È consentito solo .mp3")
     
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -157,8 +169,18 @@ async def upload_temp(file: UploadFile, request: Request):
     
     contents = await file.read()
     if len(contents) > MAX_SIZE:
-        raise HTTPException(400, f"File troppo grande (max {MAX_SIZE} MB)")
-    temp_path.write_bytes(contents)
+        raise HTTPException(
+            400,
+            f"File troppo grande (max {settings.MAX_UPLOAD_SIZE_MB} MB)"
+        )
+
+    try:
+        temp_path.write_bytes(contents)
+    except Exception as e:
+        raise HTTPException(500, f"Errore durante il salvataggio del file: {str(e)}")
+
+    if not temp_path.is_file():
+        raise HTTPException(500, "Il file non è stato salvato correttamente.")
 
     metadata = extract_metadata(temp_path)
     duplicates = check_navidrome(metadata)
@@ -192,6 +214,8 @@ async def upload_final(
     # Verifica che il file temporaneo esista
     filepath = (UPLOAD_DIR / temp_file).resolve()
     
+    print(filepath)
+    
     # Verifica che sia all'interno di UPLOAD_DIR
     if not str(filepath).startswith(str(UPLOAD_DIR.resolve())):
         raise HTTPException(400, "Percorso file non valido")
@@ -218,12 +242,11 @@ async def upload_final(
             cover_data
         )
         
-        await run_in_threadpool(
-            upload_sftp,
-            filepath,
-            artist,
-            title
-        )
+        upload_sftp(filepath, artist, title)
+        
+    except Exception as e:
+        # Gestisci eccezioni, magari file non trovato durante l'upload finale
+        raise HTTPException(500, f"Errore durante il caricamento finale: {str(e)}")
         
     finally:
         for f in UPLOAD_DIR.iterdir():

@@ -32,6 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const file = e.dataTransfer.files[0];
             fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        
+            handleUpload();
         }
     });
 
@@ -39,34 +41,103 @@ document.addEventListener("DOMContentLoaded", () => {
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
             fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+            
+            handleUpload();
         }
     });
+
+    let debounceTimeout;
+
+    // Funzione di debounce
+    function debounce(fn, delay) {
+        return function(...args) {
+            clearTimeout(debounceTimeout);  // Cancella il timeout precedente
+            debounceTimeout = setTimeout(() => fn(...args), delay);  // Imposta un nuovo timeout
+        };
+    }
+
+    // Aggiungi i listener con debounce
+    document.getElementById("title").addEventListener("input", debounce(checkDuplicates, 500));
+    document.getElementById("artist").addEventListener("input", debounce(checkDuplicates, 500));
 
 });
 
 
-// Alert output
-const showAlert = (message, type) => {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.role = 'alert';
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" style="font-size: 0.75em; margin-top: 0.25em;"></button>
-    `;
-    alertContainer.appendChild(alertDiv);
-    setTimeout(() => {
-        alertDiv.classList.remove('show');
-        alertDiv.addEventListener('transitionend', () => {
-            alertDiv.remove();
-        }, { once: true });
-        setTimeout(() => {
-            if (alertDiv.parentNode) {
-                alertDiv.remove();
-            }
-        }, 600);
-    }, 10000);
+async function handleUpload() {
+        
+    const fileInput = document.getElementById("audioFile");
+    if (!fileInput.files.length) return alert("Seleziona un file!");
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    // Mostra lo spinner di caricamento
+    const spinner = document.getElementById("uploadSpinner");
+    spinner.style.display = "inline-block";
+
+    const response = await fetch("/upload-temp", {
+        method: "POST",
+        body: formData
+    });
+
+    // Nascondi lo spinner dopo la risposta
+    spinner.style.display = "none";
+
+    if (!response.ok) {
+        const error = await response.json();
+        showAlert(`Errore: ${error.detail || "unknown"}`, 'danger');
+        return;
+    }
+
+    const data = await response.json();
+
+    // Carica artisti e album
+    loadArtistsAndAlbums(data);
+
+    // Mostra la dashboard
+    document.getElementById("uploadSection").style.display = "none";
+    document.getElementById("dashboardContent").style.display = "flex";
+
+    // Popola i metadati
+    const md = data.metadata;
+    document.getElementById("title").value = md.title || "";
+    document.getElementById("artist").value = md.artist || "";
+    document.getElementById("album").value = md.album || "";
+    document.getElementById("genre").value = md.genre || "";
+    document.getElementById("duration").value = md.duration || "";
+    document.getElementById("release_date").value = md.release_date || "";
+
+    if (md.cover) {
+        document.getElementById("coverImg").src = md.cover;
+    }
+
+    // Popola la lista dei duplicati
+    const list = document.getElementById("duplicatesList");
+    list.innerHTML = "";
+
+    if (data.duplicates.length === 0) {
+        const noDuplicates = document.createElement("li");
+        noDuplicates.className = "list-group-item text-center bg-transparent border-0";
+        noDuplicates.textContent = "Nessun duplicato trovato.";
+        list.appendChild(noDuplicates);
+    } else {
+        data.duplicates.forEach(d => {
+            const li = document.createElement("li");
+            li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
+
+            const info = document.createElement("div");
+            info.className = "same-artist-info";
+            info.innerHTML = `<strong>${d.title}</strong><br>${d.artist} - ${d.album} (${d.year || "?"})`;
+
+            li.appendChild(info);
+            list.appendChild(li);
+        });
+    }
+
+    // Salva il path temporaneo
+    document.getElementById("tempFile").value = data.temp_file;
 }
+
 
 async function loadArtistsAndAlbums(data) {
     try {
@@ -116,105 +187,11 @@ async function loadArtistsAndAlbums(data) {
 }
 
 
-async function handleUpload(event) {
-    event.preventDefault();
-    
-    const fileInput = document.getElementById("audioFile");
-    if (!fileInput.files.length) return alert("Seleziona un file!");
-
-    const formData = new FormData();
-    formData.append("file", fileInput.files[0]);
-
-    // Mostra lo spinner di caricamento
-    const spinner = document.getElementById("uploadSpinner");
-    spinner.style.display = "inline-block";
-
-    const response = await fetch("/upload-temp", {
-        method: "POST",
-        body: formData
-    });
-
-    // Nascondi lo spinner dopo la risposta
-    spinner.style.display = "none";
-
-    if (!response.ok) {
-        const error = await response.json();
-        showAlert(`Errore: ${error.detail || "unknown"}`, 'danger');
-        return;
-    }
-
-    const data = await response.json();
-
-    // Carica artisti e album
-    loadArtistsAndAlbums(data);
-
-    // Mostra la dashboard
-    document.getElementById("uploadSection").style.display = "none";
-    document.getElementById("dashboardContent").style.display = "flex";
-
-    // Popola i metadati
-    const md = data.metadata;
-    document.getElementById("title").value = md.title || "";
-    document.getElementById("artist").value = md.artist || "";
-    document.getElementById("album").value = md.album || "";
-    document.getElementById("genre").value = md.genre || "";
-    document.getElementById("duration").value = md.duration || "";
-    document.getElementById("release_date").value = md.release_date || "";
-
-    /*if (md.cover) {
-        document.getElementById("coverImg").src = md.cover;
-    }*/
-
-    // Popola la lista dei duplicati
-    const list = document.getElementById("duplicatesList");
-    list.innerHTML = "";
-
-    if (data.duplicates.length === 0) {
-        const noDuplicates = document.createElement("li");
-        noDuplicates.className = "list-group-item text-center bg-transparent border-0";
-        noDuplicates.textContent = "Nessun duplicato trovato.";
-        list.appendChild(noDuplicates);
-    } else {
-        data.duplicates.forEach(d => {
-            const li = document.createElement("li");
-            li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
-
-            const info = document.createElement("div");
-            info.innerHTML = `<strong>${d.title}</strong><br>${d.artist} - ${d.album} (${d.year || "?"})`;
-
-            li.appendChild(info);
-            list.appendChild(li);
-        });
-    }
-
-    // Salva il path temporaneo
-    document.getElementById("tempFile").value = data.temp_file;
-}
-
-function openCoverDialog() {
-    document.getElementById("coverFile").click();  // Trigger il click sul file input
-}
-
-function previewCover(event) {
-    const file = event.target.files[0];  // Recupera il file selezionato
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById("coverImg").src = e.target.result;  // Imposta l'anteprima dell'immagine
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-
-
 async function checkDuplicates() {
     const title = document.getElementById("title").value; // Recupera il titolo dal form
     const artist = document.getElementById("artist").value; // Recupera l'artista dal form
-
-    const query = `${artist} ${title}`;
     
-    const response = await fetch(`/search-duplicates?query=${encodeURIComponent(query)}`);
+    const response = await fetch(`/search-duplicates?artist=${encodeURIComponent(artist)}`);
     
     if (!response.ok) {
         showAlert(`Errore durante la ricerca dei duplicati`, 'warning');
@@ -222,29 +199,70 @@ async function checkDuplicates() {
     }
     
     const data = await response.json();
-    const list = document.getElementById("duplicatesList");
-    list.innerHTML = "";
+
+    console.log(data);
+
+    const duplicatesList = document.getElementById("duplicatesList");
+    const sameArtistList = document.getElementById("sameArtistList");
+    duplicatesList.innerHTML = "";
+    sameArtistList.innerHTML = "";
 
     if (data.duplicates.length === 0) {
         const noDuplicates = document.createElement("li");
         noDuplicates.className = "list-group-item text-center bg-transparent border-0";
         noDuplicates.textContent = "Nessun duplicato trovato.";
-        list.appendChild(noDuplicates);
+        duplicatesList.appendChild(noDuplicates);
+        sameArtistList.appendChild(noDuplicates);
     } else {
-        data.duplicates.forEach(d => {
+
+        const sameTitleDuplicates = data.duplicates.filter(d => d.title === title);
+        const sameArtistDuplicates = data.duplicates.filter(d => d.artist === artist && d.title !== title);
+
+        sameTitleDuplicates.forEach(d => {
+            const li = document.createElement("li");
+            li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
+            const info = document.createElement("div");
+            info.innerHTML = `<strong>${d.title}</strong><br>${d.artist} - ${d.album} (${d.year || "?"})`;
+            li.appendChild(info);
+            duplicatesList.appendChild(li);
+        });
+
+        // Aggiungiamo i duplicati con lo stesso artista alla lista "Stesso artista"
+        sameArtistDuplicates.forEach(d => {
             const li = document.createElement("li");
             li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
 
-            const info = document.createElement("div");
-            info.innerHTML = `<strong>${d.title}</strong><br>${d.artist} - ${d.album} (${d.year || "?"})`;
+            // 1) cover
+            const img = document.createElement("img");
+            img.src = navidromeCoverUrl(d.cover);
+            img.className = "cover-thumb me-3";
+            img.style.cursor = "pointer";
 
+            // click sulla cover -> auto-riempie il form
+            img.addEventListener("click", () => {
+                document.getElementById("album").value = d.album || "";
+                document.getElementById("genre").value = d.genre || "";
+                document.getElementById("release_date").value = d.year || "";
+
+                // se vuoi anche aggiornare l'anteprima cover
+                document.getElementById("coverImg").src = img.src;
+            });
+
+            // 2) info testo
+            const info = document.createElement("div");
+            info.innerHTML = `
+                <strong>${d.title}</strong><br>
+                ${d.artist} - ${d.album} (${d.year || "?"})<br>
+                <small class="text-muted">${d.genre || "-"}</small>
+            `;
+
+            li.appendChild(img);
             li.appendChild(info);
-            list.appendChild(li);
+            sameArtistList.appendChild(li);
         });
+
     }
 
-    // Salva il path temporaneo
-    document.getElementById("tempFile").value = data.temp_file;
 }
 
 async function searchMetadata() {
@@ -273,6 +291,8 @@ async function searchMetadata() {
             const albumName = rec.releases?.[0]?.title || "-";
             const releaseDate = rec.releases?.[0]?.date || "-";
             const genre = rec.tags?.[0]?.name || "-";
+
+            const releaseYear = getReleaseYear(releaseDate);
             
             let coverUrl = "/static/img/default.png";
             if (rec.releases && rec.releases.length > 0) {
@@ -292,7 +312,7 @@ async function searchMetadata() {
                     <p class="mb-0"><strong>Artista:</strong> ${artistName}</p>
                     <p class="mb-0"><strong>Album:</strong> ${albumName}</p>
                     <p class="mb-0"><strong>Genere:</strong> ${genre}</p>
-                    <p class="mb-0"><strong>Anno:</strong> ${releaseDate}</p>
+                    <p class="mb-0"><strong>Anno:</strong> ${releaseYear}</p>
                 </div>
                 <button class="btn btn-sm btn-primary ms-auto select-candidate" data-index="${idx}">Seleziona</button>
             `;
@@ -314,7 +334,7 @@ async function searchMetadata() {
                 // Popola solo i campi aggiuntivi
                 document.getElementById("album").value = candidate.releases?.[0]?.title || "";
                 document.getElementById("genre").value = candidate.tags?.[0]?.name || "";
-                document.getElementById("release_date").value = candidate.releases?.[0]?.date || "";
+                document.getElementById("release_date").value = getReleaseYear(candidate.releases?.[0]?.date);
                 
                 if (candidate.releases?.[0]?.id) {
                     const coverUrl = `https://coverartarchive.org/release/${candidate.releases[0].id}/front-250`;
@@ -335,7 +355,6 @@ async function searchMetadata() {
                             document.getElementById("coverImg").src = coverUrl;
                         });
                 } else {
-                    // NON toccare il file input se non c'è una cover nuova
                     if (!document.getElementById("coverFile").files.length) {
                         document.getElementById("coverImg").src = "/static/img/default.png";
                     }
@@ -352,9 +371,6 @@ async function searchMetadata() {
     }
 }
 
-
-
-
 async function sendFinal(event) {
     event.preventDefault();
     
@@ -369,6 +385,8 @@ async function sendFinal(event) {
     formData.append("duration", document.getElementById("duration").value);  // Durata
     formData.append("release_date", document.getElementById("release_date").value);  // Anno
 
+    console.log(document.getElementById("tempFile").value)
+
     // Aggiungi il file di copertura se presente
     const coverFile = document.getElementById("coverFile").files[0];
     if (coverFile) {
@@ -378,7 +396,6 @@ async function sendFinal(event) {
     document.getElementById("uploadSpinner").style.display = "inline-block";
 
     try {
-        // Invia i dati al backend utilizzando fetch
         const response = await fetch("/upload-final", {
             method: "POST",
             body: formData
@@ -396,17 +413,65 @@ async function sendFinal(event) {
         showAlert(data.message || "File caricato con successo!", 'success');
                 
         
-        
+        setTimeout(() => {
+            location.reload();
+        }, 3000);
+
     } catch (error) {
         console.error("Errore durante l'upload:", error);
         showAlert("Errore durante l'upload:" + error, 'danger');
     } finally {
-        // Nascondi lo spinner di caricamento una volta completato
         document.getElementById("uploadSpinner").style.display = "none";
-        setTimeout(() => {
-            location.reload();
-        }, 3000);
+        
     }
 }
 
+// Alert output
+const showAlert = (message, type) => {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.role = 'alert';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" style="font-size: 0.75em; margin-top: 0.25em;"></button>
+    `;
+    alertContainer.appendChild(alertDiv);
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        alertDiv.addEventListener('transitionend', () => {
+            alertDiv.remove();
+        }, { once: true });
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 600);
+    }, 10000);
+}
 
+function openCoverDialog() {
+    document.getElementById("coverFile").click();  // Trigger il click sul file input
+}
+
+function previewCover(event) {
+    const file = event.target.files[0];  // Recupera il file selezionato
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById("coverImg").src = e.target.result;  // Imposta l'anteprima dell'immagine
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function getReleaseYear(releaseDate) {
+    if (!releaseDate || releaseDate === "-") return "-";
+    const parsedDate = new Date(releaseDate);
+    if (isNaN(parsedDate)) return "";
+    return parsedDate.getFullYear();
+}
+
+function navidromeCoverUrl(coverId, size = 150) {
+    if (!coverId) return "/static/img/default.png";
+    return `/navidrome/cover/${coverId}?size=${size}`;
+}
