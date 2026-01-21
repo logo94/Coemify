@@ -1,3 +1,7 @@
+html {
+    scrollbar-gutter: stable;
+}
+
 body {
     background: linear-gradient(to right, #4e54c8, #8f94fb);
     min-height: 100vh;
@@ -6,6 +10,7 @@ body {
     align-items: center;
     padding: 20px;
 }
+
 
 #alertContainer {
     position: fixed;
@@ -57,9 +62,9 @@ body {
     border-color: #3b40a4;
 }
 
-#dashboardContent .row {
-    display: flex;
-    gap: 1rem;
+#dashboardContent {
+    width: 100%;
+    max-width: 1200px;
 }
 
 .cover-container img {
@@ -110,6 +115,10 @@ button {
 
 button:hover {
     background-color: #3b40a4;
+}
+
+.badge {
+    color: #3b40a4;
 }
 
 .list-group-item {

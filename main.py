@@ -25,7 +25,7 @@ from slowapi.errors import RateLimitExceeded
 from app.script.settings import settings
 from app.script.ssh_utils import upload_sftp
 from app.script.metadata import extract_metadata, update_metadata
-from app.script.apis import check_navidrome, get_artists_albums_genres, get_navidrome_image
+from app.script.apis import check_duplicates_navidrome, get_navidrome_artist, get_navidrome_albums, get_albums_by_artist, get_navidrome_image, get_navidrome_genres
 
 # ------------------------------
 # FastAPI + Middleware
@@ -126,20 +126,51 @@ def dashboard(request: Request):
     )
 
 # ------------------------------
-# Cerca duplicati su Navidrome
+# API Navidrome
 # ------------------------------
-@app.get("/search-duplicates")
-async def search_duplicates(artist: str):
+
+# Ricerca duplicati
+@app.get("/api/search-duplicates")
+async def search_duplicates(title: str, artist: str):
     """Ricerca duplicati per titolo e artista"""
     metadata = {
-        "artist": artist,
+        "title": title,
+        "artist": artist
     }
+    duplicates = check_duplicates_navidrome(metadata)
+    return duplicates
 
-    duplicates = check_navidrome(metadata)
-    return {"duplicates": duplicates}
+# Artisti
+@app.get("/api/artists")
+async def get_all_artists():
+    """Ottiene tutti gli artisti caricati su Navidrome"""
+    artists = get_navidrome_artist()
+    return artists
 
+# Albums
+@app.get("/api/albums")
+async def get_albums():
+    """Ottiene gli album per un artista specifico"""
+    albums = get_navidrome_albums()
+    return albums
 
-@app.get("/navidrome/cover/{cover_id}")
+# Generi
+@app.get("/api/genres")
+async def get_albums():
+    """Ottiene tutti i generi"""
+    albums = get_navidrome_genres()
+    return albums
+
+# Meta albums per autocompilazione
+@app.get("/api/albums/artist/{artist_id}")
+async def get_albums(artist_id: str):
+    """Ottiene gli album per un artista specifico"""
+    albums = get_albums_by_artist(artist_id)
+    print(albums)
+    return albums
+
+# Immagine cover album
+@app.get("/api/albums/cover/{cover_id}")
 def navidrome_cover(cover_id: str, size: int = 250):
     r = get_navidrome_image(cover_id, size)
     return Response(
@@ -150,7 +181,7 @@ def navidrome_cover(cover_id: str, size: int = 250):
 # ------------------------------
 # Upload temporaneo + estrazione metadati
 # ------------------------------
-@app.post("/upload-temp")
+@app.post("/api/upload-temp")
 async def upload_temp(file: UploadFile, request: Request):
     
     # Check MIME type (solo MP3)
@@ -183,15 +214,9 @@ async def upload_temp(file: UploadFile, request: Request):
         raise HTTPException(500, "Il file non è stato salvato correttamente.")
 
     metadata = extract_metadata(temp_path)
-    duplicates = check_navidrome(metadata)
-    artists, albums, genres = get_artists_albums_genres()
 
     return {
         "metadata": metadata,
-        "artists": artists,
-        "albums": albums,
-        "genres": genres,
-        "duplicates": duplicates,
         "temp_file": filename
     }
     
@@ -199,7 +224,7 @@ async def upload_temp(file: UploadFile, request: Request):
 # Upload finale e SFTP
 # ------------------------------
 # Funzione per caricare il file e metadati
-@app.post("/upload-final")
+@app.post("/api/upload-final")
 async def upload_final(
     temp_file: str = Form(...),
     title: str = Form(...),

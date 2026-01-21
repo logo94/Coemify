@@ -10,7 +10,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="/static/js/script.js"></script>
 
 </head>
 <body>
@@ -24,9 +23,9 @@
 
     <!-- Form iniziale upload -->
     <div id="uploadSection" class="card bg-transparent border-0 p-4 mb-4 w-50">
-        <form id="uploadForm" onsubmit="handleUpload(event)">
+        <form id="uploadForm">
             <div id="dropZone" class="drop-zone">
-                <h2 style="margin-top: 11vh;">🎵</h2>
+                <h2 style="margin-top: 15%;">🎵</h2>
 
                 <p class="mt-4">Drag, Click, Tap</p>
                 <input type="file" id="audioFile" accept="audio/*" required hidden>
@@ -46,8 +45,8 @@
 
                     <img id="coverImg" src="/static/img/default.png" alt="Copertina">
                     
-                    <button type="button" id="uploadCoverBtn" onclick="openCoverDialog()">Carica copertina</button>
-                        <input type="file" id="coverFile" accept="image/*" style="display:none;" onchange="previewCover(event)">
+                    <button type="button" id="uploadCoverBtn">Carica copertina</button>
+                        <input type="file" id="coverFile" accept="image/*" style="display:none;">
 
                 </div>
             </div>
@@ -56,7 +55,7 @@
         <!-- Colonna centrale: form metadati -->
         <div class="col-lg-6 col-md-6 col-sm-12">
             <div class="card p-4 mb-2">
-                <form id="metadataForm" onsubmit="sendFinal(event)">
+                <form id="metadataForm">
                     <input type="hidden" id="tempFile" name="temp_file">
 
                     <div class="mb-3">
@@ -91,8 +90,8 @@
                     </div>
 
                     <div class="btn-group d-flex">
-                        <button type="button" class="btn btn-light" onclick="searchMetadata()">Cerca metadati</button>
-                        <button type="submit" class="btn save">Salva in Navidrome</button>
+                        <button type="button" id="search-meta" class="btn btn-light">Cerca metadati</button>
+                        <button id="finalUpload" type="button" class="btn save">Salva in Navidrome</button>
                     </div>
                 </form>
             </div>
@@ -100,23 +99,25 @@
 
         <!-- Colonna destra: duplicati Navidrome -->
         <div class="col-lg-3 col-md-3 col-sm-12">
-            <div class="card bg-transparent border-0 overflow-y-auto" style="height: 22vh;">
+            <div class="card bg-transparent border-0" style="height: 15vh;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="text-white pt-3">Possibili duplicati</h5>
+                    <h5 class="text-white pt-2">Duplicati</h5>
+                    <span id="dup-badge" class="badge bg-light"></span>
                 </div>
-                <ul id="duplicatesList" class="list-group mt-3"></ul>
+                <ul id="duplicatesList" class="list-group overflow-y-auto"></ul>
             </div>
 
-            <div class="card bg-transparent border-0 overflow-y-auto" style="height: 35vh;">
+            <div class="card bg-transparent border-0" style="height: 50vh;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="text-white pt-3">Stesso artista</h5>
+                    <h5 class="text-white pt-3">Albums artista</h5>
+                    <span id="album-badge" class="badge bg-light mt-2"></span>
                 </div>
-                <ul id="sameArtistList" class="list-group mt-3"></ul>
+                <ul id="sameArtistList" class="list-group overflow-y-auto"></ul>
             </div>
         </div>
     </div>
 
-    <footer class="bg-transparent text-white py-1 mt-4">
+    <footer class="bg-transparent text-white py-1 mt-3">
         <div class="text-center">
 
             <div class="d-flex justify-content-center gap-4 fs-3">
@@ -127,7 +128,7 @@
                     </svg>                
                 </a>
 
-                <a href="https://www.amazon.it/music" target="_blank" class="text-white" aria-label="Paypal">
+                <a href="https://paypal.me/L0G094" target="_blank" class="text-white" aria-label="Paypal">
                     <svg xmlns="http://www.w3.org/2000/svg" height="40px" viewBox="0 -960 960 960" width="40px" fill="#e3e3e3"><path d="M640-520q17 0 28.5-11.5T680-560q0-17-11.5-28.5T640-600q-17 0-28.5 11.5T600-560q0 17 11.5 28.5T640-520Zm-320-93.33h200V-680H320v66.67ZM180-120q-34-114-67-227.5T80-580q0-92 64-156t156-64h200q29-38 70.5-59t89.5-21q25 0 42.5 17.5T720-820q0 6-1.5 12t-3.5 11q-4 11-7.5 22.5T702-751l91 91h87v279l-113 37-67 224H480v-80h-80v80H180Zm50-66.67h103.33v-80h213.34v80H650l62.67-208.66 100.66-34.34v-163.66h-48l-132-132q.67-23.34 5.17-45.17 4.5-21.83 10.17-44.17-35 9.34-65 28.84t-45.34 52.5H300q-63.52 0-108.43 44.9-44.9 44.91-44.9 108.43 0 101.44 28.33 198.22t55 195.11Zm250-314Z"/></svg>
                 </a>
                 <a href="https://www.pikapods.com/pods" target="_blank" class="text-white" aria-label="PikaPod">
@@ -160,11 +161,7 @@
         </div>
     </div>
 
-
-
-
-
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>
