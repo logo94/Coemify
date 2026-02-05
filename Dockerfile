@@ -9,16 +9,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Crea virtualenv
-RUN python -m venv $VIRTUAL_ENV
+# Crea virtualenv usando i tool GIÀ presenti (NO download)
+RUN python -m venv /opt/venv
 
-# Upgrade strumenti DENTRO il venv
-RUN pip install --upgrade pip setuptools wheel
-
-# Copia requirements
+# Copia requirements prima per caching
 COPY requirements.txt .
 
-# Installa dipendenze nel venv (hardened)
+# Installa dipendenze SENZA upgrade pip/wheel
 RUN pip install \
     --retries 10 \
     --timeout 100 \
@@ -26,7 +23,7 @@ RUN pip install \
     --index-url https://pypi.org/simple \
     -r requirements.txt
 
-# Copia codice
+# Copia il codice
 COPY . .
 
 EXPOSE 8080
