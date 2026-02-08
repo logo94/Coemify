@@ -57,11 +57,14 @@ export async function firstUpload() {
     document.getElementById("genre").value = md.genre || "";
     document.getElementById("duration").value = md.duration || "";
     document.getElementById("release_date").value = md.release_date || "";
-    document.getElementById("track_number").value = md.track_number || 1;
-
-    if (md.cover) {
-        document.getElementById("coverImg").src = md.cover;
+    
+    if (md.track_number !== undefined && md.track_number !== null) {
+        document.getElementById("track_number").value = md.track_number;
     }
+
+    /*if (md.cover) {
+        document.getElementById("coverImg").src = md.cover;
+    }*/
 
     // Salva il path temporaneo
     document.getElementById("tempFile").value = data.temp_file;
@@ -95,7 +98,12 @@ export async function finalUpload() {
     formData.append("genre", document.getElementById("genre").value);  // Genere
     formData.append("duration", document.getElementById("duration").value);  // Durata
     formData.append("release_date", document.getElementById("release_date").value);  // Anno
-    formData.append("track_number", document.getElementById("track_number").value);  // Traccia N°
+    
+    if (document.getElementById("track_number")) {
+        formData.append("track_number", document.getElementById("track_number").value);  // Traccia N°
+    } else {
+        formData.append("track_number", "1");  // Traccia N° vuota se non specificata
+    }
 
     // Aggiungi il file di copertura se presente
     if (coverFile) {

@@ -48,12 +48,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             if (files.length > 1) {
                 // Multi-file batch upload
-                fileInfo.textContent = `${files.length} file selezionati`;
+                fileInfo.value = `${files.length} file selezionati`;
                 await batchFirstUpload(files);
             } else {
                 // Single file upload
                 const file = files[0];
-                fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                fileInfo.value = `${file.name.replace(".mp3", "")}`;
                 await firstUpload();
                 await checkDuplicates();
             }
@@ -65,12 +65,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (files.length > 0) {
             if (files.length > 1) {
                 // Multi-file batch upload
-                fileInfo.textContent = `${files.length} file selezionati`;
+                fileInfo.value = `${files.length} file selezionati`;
                 await batchFirstUpload(files);
             } else {
                 // Single file upload
                 const file = files[0];
-                fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                fileInfo.value = `${file.name.replace(".mp3", "")}`;
                 await firstUpload();
                 await checkDuplicates();
             }
