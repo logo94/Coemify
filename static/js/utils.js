@@ -7,6 +7,8 @@ export function normalizeValue(v) {
 
 // Alert output
 export const showAlert = (message, type) => {
+    const alertContainer = document.getElementById('alertContainer');
+    if (!alertContainer) return;
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
     alertDiv.role = 'alert';

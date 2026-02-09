@@ -5,33 +5,37 @@ export async function apiRequest(url, params, raw_response=false) {
     const response = await fetch(url, params);
 
     if (!response.ok) {
-        const error = await response.json();
-        showAlert(`Errore: ${error.detail || "unknown"}`, 'danger');
+        try {
+            const error = await response.json();
+            showAlert(`Errore: ${error.detail || "unknown"}`, 'danger');
+        } catch {
+            showAlert(`Errore: ${response.status} ${response.statusText}`, 'danger');
+        }
         return;
     }
 
-    if (raw_response) return response
+    if (raw_response) return response;
 
-    const data = await response.json();
-
-    return data
+    return await response.json();
 
 }
 
 async function loadArtists() {
-    const artists = await apiRequest('/api/artists')
+    const artists = await apiRequest('/api/artists');
+    if (!artists) return;
     const artistList = document.getElementById("artists");
     artistList.innerHTML = "";
     artists.forEach(artist => {
         const option = document.createElement("option");
         option.value = artist.name;
-        option.dataset.id = artist.id
+        option.dataset.id = artist.id;
         artistList.appendChild(option);
     });
 }
 
 async function loadAlbums() {
-    const albums = await apiRequest('/api/albums')
+    const albums = await apiRequest('/api/albums');
+    if (!albums) return;
     const albumList = document.getElementById("albums");
     albumList.innerHTML = "";
     albums.forEach(album => {
@@ -44,7 +48,8 @@ async function loadAlbums() {
 }
 
 async function loadGenres() {
-    const genres = await apiRequest('/api/genres')
+    const genres = await apiRequest('/api/genres');
+    if (!genres) return;
     const genreList = document.getElementById("genres");
     genreList.innerHTML = "";
     genres.forEach(genre => {
@@ -57,9 +62,7 @@ async function loadGenres() {
 }
 
 export async function loadOptions() {
-    await loadArtists();
-    await loadAlbums();
-    await loadGenres()
+    await Promise.all([loadArtists(), loadAlbums(), loadGenres()]);
 }
 
 export async function checkDuplicates() {
@@ -70,9 +73,9 @@ export async function checkDuplicates() {
     const title = document.getElementById("title").value;
     const artist = document.getElementById("artist").value;
     
-    const duplicates = await apiRequest(`/api/search-duplicates?title=${title}&artist=${artist}`)
-    
-    if (duplicates.length < 1) {
+    const duplicates = await apiRequest(`/api/search-duplicates?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`)
+
+    if (!duplicates || duplicates.length < 1) {
         const noDuplicates = document.createElement("li");
         noDuplicates.className = "list-group-item text-center bg-transparent border-0";
         noDuplicates.textContent = "Nessun duplicato trovato.";
@@ -118,7 +121,7 @@ export async function loadArtistAlbums() {
         const artistId = option.dataset.id
         const albums = await apiRequest(`/api/albums/artist/${encodeURIComponent(artistId)}`)
 
-            if (albums.length < 1 ) {
+            if (!albums || albums.length < 1 ) {
                 const noDuplicates = document.createElement("li");
                 noDuplicates.className = "list-group-item text-center bg-transparent border-0";
                 noDuplicates.textContent = "Nessun album trovato.";

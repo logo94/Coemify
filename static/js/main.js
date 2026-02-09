@@ -16,8 +16,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const metaBtn = document.getElementById("search-meta")
     const finalUploadBtn = document.getElementById("finalUpload")
 
-    // Popolamento tendine
-    await loadOptions();
+    // Popolamento tendine (non-blocking, dropdowns fill in background)
+    loadOptions();
 
     /* CLICK → file picker */
     dropZone.addEventListener("click", () => {

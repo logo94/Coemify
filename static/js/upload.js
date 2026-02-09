@@ -26,48 +26,54 @@ export function getBatchTracks() {
 }
 
 export async function firstUpload() {
-        
+
     const fileInput = document.getElementById("audioFile");
     if (!fileInput.files.length) return alert("Seleziona un file!");
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
 
-    // Mostra lo spinner di caricamento
     const spinner = document.getElementById("uploadSpinner");
     spinner.style.display = "inline-block";
 
-    // Nascondi lo spinner dopo la risposta
-    spinner.style.display = "none";
+    try {
+        const data = await apiRequest("/api/upload-temp", {
+            method: "POST",
+            body: formData
+        });
 
-    const data = await apiRequest("/api/upload-temp", {
-        method: "POST",
-        body: formData
-    })
+        if (!data) return;
 
-    // Mostra la dashboard
-    document.getElementById("uploadSection").style.display = "none";
-    document.getElementById("dashboardContent").style.display = "flex";
+        // Mostra la dashboard
+        document.getElementById("uploadSection").style.display = "none";
+        document.getElementById("dashboardContent").style.display = "flex";
 
-    // Popola i metadati
-    const md = data.metadata;
-    document.getElementById("title").value = md.title || "";
-    document.getElementById("artist").value = md.artist || "";
-    document.getElementById("album").value = md.album || "";
-    document.getElementById("genre").value = md.genre || "";
-    document.getElementById("duration").value = md.duration || "";
-    document.getElementById("release_date").value = md.release_date || "";
-    
-    if (md.track_number !== undefined && md.track_number !== null) {
-        document.getElementById("track_number").value = md.track_number;
+        // Popola i metadati
+        const md = data.metadata;
+        document.getElementById("title").value = md.title || "";
+        document.getElementById("artist").value = md.artist || "";
+        document.getElementById("album").value = md.album || "";
+        document.getElementById("genre").value = md.genre || "";
+        document.getElementById("duration").value = md.duration || "";
+        document.getElementById("release_date").value = md.release_date || "";
+
+        if (md.track_number !== undefined && md.track_number !== null) {
+            document.getElementById("track_number").value = md.track_number;
+        }
+
+        if (md.cover) {
+            document.getElementById("coverImg").src = md.cover;
+        }
+
+        // Salva il path temporaneo
+        document.getElementById("tempFile").value = data.temp_file;
+
+    } catch (error) {
+        console.error("Errore durante l'upload:", error);
+        showAlert("Errore durante l'upload: " + error, 'danger');
+    } finally {
+        spinner.style.display = "none";
     }
-
-    /*if (md.cover) {
-        document.getElementById("coverImg").src = md.cover;
-    }*/
-
-    // Salva il path temporaneo
-    document.getElementById("tempFile").value = data.temp_file;
 }
 
 export async function finalUpload() {
@@ -99,11 +105,7 @@ export async function finalUpload() {
     formData.append("duration", document.getElementById("duration").value);  // Durata
     formData.append("release_date", document.getElementById("release_date").value);  // Anno
     
-    if (document.getElementById("track_number")) {
-        formData.append("track_number", document.getElementById("track_number").value);  // Traccia N°
-    } else {
-        formData.append("track_number", "1");  // Traccia N° vuota se non specificata
-    }
+    formData.append("track_number", document.getElementById("track_number").value || "");
 
     // Aggiungi il file di copertura se presente
     if (coverFile) {
@@ -145,42 +147,83 @@ export async function finalUpload() {
 export async function batchFirstUpload(files) {
     if (!files || files.length === 0) return;
 
-    const formData = new FormData();
-    for (const file of files) {
-        formData.append("files", file);
-    }
-
     const spinner = document.getElementById("uploadSpinner");
+    const fileInfo = document.getElementById("fileInfo");
     spinner.style.display = "inline-block";
 
     try {
-        const data = await apiRequest("/api/upload-temp-batch", {
-            method: "POST",
-            body: formData
-        });
+        // Upload files in parallel (max 5 concurrent) to avoid 413 payload limit
+        const CONCURRENCY = 5;
+        const fileArray = Array.from(files);
+        const total = fileArray.length;
+        const results = [];
+        let completed = 0;
 
-        if (!data) return;
+        fileInfo.value = `Analisi file 0/${total}...`;
 
-        spinner.style.display = "none";
+        for (let start = 0; start < fileArray.length; start += CONCURRENCY) {
+            const batch = fileArray.slice(start, start + CONCURRENCY);
+            const batchResults = await Promise.all(
+                batch.map((file, j) => {
+                    const i = start + j;
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    return apiRequest("/api/upload-temp", {
+                        method: "POST",
+                        body: formData
+                    }).then(data => {
+                        completed++;
+                        fileInfo.value = `Analisi file ${completed}/${total}...`;
+                        return data ? { index: i, data, file } : null;
+                    }).catch(() => {
+                        completed++;
+                        fileInfo.value = `Analisi file ${completed}/${total}...`;
+                        return null;
+                    });
+                })
+            );
+            results.push(...batchResults.filter(Boolean));
+        }
+        if (results.length === 0) return;
+
+        // Sort by original index to preserve file order
+        results.sort((a, b) => a.index - b.index);
+
+        const firstMd = results[0].data.metadata;
+        const shared = {
+            artist: firstMd.artist || "",
+            album: firstMd.album || "",
+            genre: firstMd.genre || "",
+            release_date: firstMd.release_date || "",
+            cover: firstMd.cover || null
+        };
+
+        const tracks = results.map(r => ({
+            temp_file: r.data.temp_file,
+            title: r.data.metadata.title || r.file.name.replace(".mp3", ""),
+            duration: r.data.metadata.duration || "",
+            track_number: r.data.metadata.track_number,
+            original_filename: r.file.name
+        }));
 
         // Set batch mode
         batchMode = true;
-        batchTracks = data.tracks;
+        batchTracks = tracks;
 
         // Show dashboard
         document.getElementById("uploadSection").style.display = "none";
         document.getElementById("dashboardContent").style.display = "flex";
 
         // Populate shared metadata from first file
-        const shared = data.shared;
         document.getElementById("artist").value = shared.artist || "";
         document.getElementById("album").value = shared.album || "";
         document.getElementById("genre").value = shared.genre || "";
         document.getElementById("release_date").value = shared.release_date || "";
 
-        // Hide single-file title/duration fields (not used in batch mode)
+        // Hide single-file fields (not used in batch mode)
         document.getElementById("title").closest(".mb-3").style.display = "none";
         document.getElementById("duration").closest(".mb-3").style.display = "none";
+        document.getElementById("track_number").closest(".mb-3").style.display = "none";
 
         if (shared.cover) {
             document.getElementById("coverImg").src = shared.cover;
@@ -192,7 +235,7 @@ export async function batchFirstUpload(files) {
         trackListSection.style.display = "block";
         trackList.innerHTML = "";
 
-        data.tracks.forEach((track, index) => {
+        tracks.forEach((track, index) => {
             const trackItem = document.createElement("div");
             trackItem.className = "track-item mb-2 p-2 bg-dark rounded";
             const formattedDuration = formatDuration(track.duration);
@@ -218,7 +261,7 @@ export async function batchFirstUpload(files) {
         });
 
         // Update file info
-        document.getElementById("fileInfo").textContent = `${files.length} file selezionati`;
+        fileInfo.value = `${tracks.length} file selezionati`;
 
     } catch (error) {
         console.error("Errore durante l'upload batch:", error);
@@ -244,7 +287,7 @@ export async function batchFinalUpload() {
     const searchBtn = document.getElementById("search-meta");
     saveBtn.disabled = true;
     searchBtn.disabled = true;
-    saveBtn.textContent = "Caricamento...";
+    saveBtn.textContent = "Salvataggio...";
 
     // Gather shared metadata
     const artist = document.getElementById("artist").value;
