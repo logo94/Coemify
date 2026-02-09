@@ -12,7 +12,6 @@ from typing import List
 from fastapi import FastAPI, Response, Request, File, UploadFile, HTTPException, Form
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import PlainTextResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -43,13 +42,6 @@ app.add_middleware(
     same_site=settings.SESSION_SAMESITE,
     https_only=settings.SESSION_HTTPS_ONLY,
 )
-
-# Trusted host
-if hasattr(settings, "HOST"):
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[settings.HOST],
-    )
 
 # Middleware per protezione dashboard
 class AuthMiddleware(BaseHTTPMiddleware):
