@@ -25,11 +25,6 @@ class Settings:
     UPLOAD_DIR = os.getenv("UPLOAD_DIR")
     ALLOWED_MIME_PREFIX = os.getenv("ALLOWED_MIME_PREFIX")
 
-    # ===== Server =====
-    HOST = os.getenv("HOST")
-    PORT = int(os.getenv("PORT"))
-    WORKERS = int(os.getenv("WORKERS"))
-
     # ===== Rate limiting =====
     LOGIN_RATE_LIMIT = os.getenv("LOGIN_RATE_LIMIT")
     UPLOAD_RATE_LIMIT = os.getenv("UPLOAD_RATE_LIMIT")

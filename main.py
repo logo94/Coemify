@@ -12,7 +12,6 @@ from typing import List
 from fastapi import FastAPI, Response, Request, File, UploadFile, HTTPException, Form
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import PlainTextResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +24,7 @@ from slowapi.errors import RateLimitExceeded
 
 # Utils
 from app.script.settings import settings
-from app.script.ssh_utils import upload_sftp
+from app.script.ssh_utils import upload_sftp, upload_sftp_batch
 from app.script.metadata import extract_metadata, update_metadata
 from app.script.apis import check_duplicates_navidrome, get_navidrome_artist, get_navidrome_albums, get_albums_by_artist, get_navidrome_image, get_navidrome_genres
 
@@ -44,17 +43,10 @@ app.add_middleware(
     https_only=settings.SESSION_HTTPS_ONLY,
 )
 
-# Trusted host
-if hasattr(settings, "HOST"):
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[settings.HOST],
-    )
-
 # Middleware per protezione dashboard
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        protected_paths = ["/dashboard", "/search-duplicates", "/upload-temp", "/upload-final", "/api/upload-temp-batch", "/api/upload-final-batch"]
+        protected_paths = ["/dashboard", "/api/"]
         if any(request.url.path.startswith(p) for p in protected_paths):
             cookie = request.cookies.get(settings.SESSION_COOKIE_NAME)
             if cookie != "logged_in":
@@ -134,47 +126,33 @@ def dashboard(request: Request):
 # Ricerca duplicati
 @app.get("/api/search-duplicates")
 async def search_duplicates(title: str, artist: str):
-    """Ricerca duplicati per titolo e artista"""
-    metadata = {
-        "title": title,
-        "artist": artist
-    }
-    duplicates = check_duplicates_navidrome(metadata)
-    return duplicates
+    metadata = {"title": title, "artist": artist}
+    return await run_in_threadpool(check_duplicates_navidrome, metadata)
 
 # Artisti
 @app.get("/api/artists")
-async def get_all_artists():
-    """Ottiene tutti gli artisti caricati su Navidrome"""
-    artists = get_navidrome_artist()
-    return artists
+async def api_get_artists():
+    return await run_in_threadpool(get_navidrome_artist)
 
 # Albums
 @app.get("/api/albums")
-async def get_albums():
-    """Ottiene gli album per un artista specifico"""
-    albums = get_navidrome_albums()
-    return albums
+async def api_get_albums():
+    return await run_in_threadpool(get_navidrome_albums)
 
 # Generi
 @app.get("/api/genres")
-async def get_albums():
-    """Ottiene tutti i generi"""
-    albums = get_navidrome_genres()
-    return albums
+async def api_get_genres():
+    return await run_in_threadpool(get_navidrome_genres)
 
 # Meta albums per autocompilazione
 @app.get("/api/albums/artist/{artist_id}")
-async def get_albums(artist_id: str):
-    """Ottiene gli album per un artista specifico"""
-    albums = get_albums_by_artist(artist_id)
-    print(albums)
-    return albums
+async def api_get_artist_albums(artist_id: str):
+    return await run_in_threadpool(get_albums_by_artist, artist_id)
 
 # Immagine cover album
 @app.get("/api/albums/cover/{cover_id}")
-def navidrome_cover(cover_id: str, size: int = 250):
-    r = get_navidrome_image(cover_id, size)
+async def navidrome_cover(cover_id: str, size: int = 250):
+    r = await run_in_threadpool(get_navidrome_image, cover_id, size)
     return Response(
         content=r.content,
         media_type=r.headers.get("Content-Type", "image/jpeg")
@@ -215,7 +193,7 @@ async def upload_temp(file: UploadFile, request: Request):
     if not temp_path.is_file():
         raise HTTPException(500, "Il file non è stato salvato correttamente.")
 
-    metadata = extract_metadata(temp_path)
+    metadata = await run_in_threadpool(extract_metadata, temp_path)
 
     return {
         "metadata": metadata,
@@ -241,9 +219,7 @@ async def upload_final(
     
     # Verifica che il file temporaneo esista
     filepath = (UPLOAD_DIR / temp_file).resolve()
-    
-    print(filepath)
-    
+
     # Verifica che sia all'interno di UPLOAD_DIR
     if not str(filepath).startswith(str(UPLOAD_DIR.resolve())):
         raise HTTPException(400, "Percorso file non valido")
@@ -271,10 +247,9 @@ async def upload_final(
             cover_data
         )
 
-        upload_sftp(filepath, artist, title)
-        
+        await run_in_threadpool(upload_sftp, filepath, artist, title)
+
     except Exception as e:
-        # Gestisci eccezioni, magari file non trovato durante l'upload finale
         raise HTTPException(500, f"Errore durante il caricamento finale: {str(e)}")
         
     finally:
@@ -332,7 +307,7 @@ async def upload_temp_batch(files: List[UploadFile] = File(...)):
         if not temp_path.is_file():
             raise HTTPException(500, f"Il file '{file.filename}' non è stato salvato correttamente.")
 
-        metadata = extract_metadata(temp_path)
+        metadata = await run_in_threadpool(extract_metadata, temp_path)
 
         # Use first file's metadata as shared defaults
         if i == 0:
@@ -385,6 +360,7 @@ async def upload_final_batch(
     cover_data = await cover.read() if cover else None
 
     errors = []
+    sftp_files = []
 
     for track in tracks_data:
         temp_file = track.get("temp_file")
@@ -423,20 +399,23 @@ async def upload_final_batch(
                 },
                 cover_data
             )
-
-            # Upload to SFTP
-            upload_sftp(filepath, artist, title)
+            sftp_files.append((filepath, artist, title))
 
         except Exception as e:
-            errors.append(f"Errore upload '{title}': {str(e)}")
+            errors.append(f"Errore metadati '{title}': {str(e)}")
+
+    # Upload all files over a single SFTP connection
+    if sftp_files:
+        sftp_errors = await run_in_threadpool(upload_sftp_batch, sftp_files)
+        errors.extend(sftp_errors)
 
     # Cleanup old temp files
     for f in UPLOAD_DIR.iterdir():
         if f.is_file() and time.time() - f.stat().st_mtime > 600:
             try:
                 f.unlink()
-            except Exception as e:
-                print(f"Errore cancellando {f}: {e}")
+            except Exception:
+                pass
 
     if errors:
         return JSONResponse({
