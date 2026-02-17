@@ -64,36 +64,44 @@ export async function loadOptions() {
 
 export async function checkDuplicates() {
 
-    const list = document.getElementById("duplicatesList");
-    list.innerHTML = "";
+    const artist = document.getElementById("artist").value.trim();
+    if (!artist) return;
 
-    const title = document.getElementById("title").value;
-    const artist = document.getElementById("artist").value;
-    
-    const duplicates = await apiRequest(`/api/search-duplicates?title=${title}&artist=${artist}`)
-    
-    if (duplicates.length < 1) {
-        const noDuplicates = document.createElement("li");
-        noDuplicates.className = "list-group-item text-center bg-transparent border-0";
-        noDuplicates.textContent = "Nessun duplicato trovato.";
-        list.appendChild(noDuplicates);
-    
-    } else {
-        
-        document.getElementById("dup-badge").textContent = duplicates.length
+    const tracks = await apiRequest(
+        `/api/search-duplicates?artist=${encodeURIComponent(artist)}`
+    );
 
-        duplicates.forEach(d => {
-            const li = document.createElement("li");
-            li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
+    const trackIndex = new Set(
+        tracks.map(t => t.toLowerCase().trim())
+    );
 
-            const info = document.createElement("div");
-            info.className = "same-artist-info";
-            info.innerHTML = `<strong>${d.title}</strong><br>${d.artist} - ${d.album} (${d.year || "?"})`;
+    const titleInputs = document.querySelectorAll(".title");
 
-            li.appendChild(info);
-            list.appendChild(li);
-        });
-    }
+    titleInputs.forEach(input => {
+
+        const currentTitle = input.value.toLowerCase().trim();
+
+        // reset stato precedente
+        input.classList.remove("is-duplicate");
+        const existingMsg = input.closest(".track-item").querySelector(".duplicate-msg");
+        if (existingMsg) existingMsg.remove();
+
+        if (trackIndex.has(currentTitle)) {
+
+            input.classList.add("is-duplicate");
+
+            const badge = input.parentElement.querySelector(".duplicate-badge");
+            if (badge) badge.style.display = "block";
+
+        } else {
+
+            input.classList.remove("is-duplicate");
+
+            const badge = input.parentElement.querySelector(".duplicate-badge");
+            if (badge) badge.style.display = "none";
+        }
+
+    });
 
 }
 
@@ -118,48 +126,49 @@ export async function loadArtistAlbums() {
         const artistId = option.dataset.id
         const albums = await apiRequest(`/api/albums/artist/${encodeURIComponent(artistId)}`)
 
-            if (albums.length < 1 ) {
-                const noDuplicates = document.createElement("li");
-                noDuplicates.className = "list-group-item text-center bg-transparent border-0";
-                noDuplicates.textContent = "Nessun album trovato.";
-                sameArtistList.appendChild(noDuplicates);
-            } else {
+        if (albums.length < 1 ) {
+            const noDuplicates = document.createElement("li");
+            noDuplicates.className = "list-group-item text-center bg-transparent border-0";
+            noDuplicates.textContent = "Nessun album trovato.";
+            sameArtistList.appendChild(noDuplicates);
+        } else {
 
-                document.getElementById("album-badge").textContent = albums.length
+            document.getElementById("album-badge").textContent = albums.length
 
-                albums.forEach(d => {
-                    const li = document.createElement("li");
-                    li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
+            albums.forEach(d => {
+                const li = document.createElement("li");
+                li.className = "list-group-item bg-transparent border-0 border-bottom d-flex align-items-center";
 
-                    const img = document.createElement("img");
-                    img.src = navidromeCoverUrl(d.cover);
-                    img.className = "cover-thumb me-3";
-                    img.style.cursor = "pointer";
+                const img = document.createElement("img");
+                img.src = navidromeCoverUrl(d.cover);
+                img.className = "cover-thumb me-3";
+                img.style.cursor = "pointer";
 
-                    // click sulla cover -> auto-riempie il form
-                    img.addEventListener("click", () => {
-                        document.getElementById("album").value = d.name || "";
-                        document.getElementById("genre").value = d.genre || "";
-                        document.getElementById("release_date").value = d.year || "";
+                // click sulla cover -> auto-riempie il form
+                img.addEventListener("click", () => {
+                    document.getElementById("album").value = d.name || "";
+                    document.getElementById("genre").value = d.genre || "";
+                    document.getElementById("release_date").value = d.year || "";
 
-                        // se vuoi anche aggiornare l'anteprima cover
-                        document.getElementById("coverImg").src = img.src;
-                    });
-
-                    // 2) info testo
-                    const info = document.createElement("div");
-                    info.innerHTML = `
-                        <strong>${d.name}</strong><br>
-                        ${d.year || "?"} | ${d.genre || "-"}
-                    `;
-
-                    li.appendChild(img);
-                    li.appendChild(info);
-                    sameArtistList.appendChild(li);
-
+                    // se vuoi anche aggiornare l'anteprima cover
+                    document.getElementById("coverImg").src = img.src;
                 });
 
-            }
+                // 2) info testo
+                const info = document.createElement("div");
+                info.innerHTML = `
+                    <strong>${d.name}</strong><br>
+                    ${d.year || "?"} | ${d.genre || "-"}
+                `;
+
+                li.appendChild(img);
+                li.appendChild(info);
+                sameArtistList.appendChild(li);
+
+            });
+
+        }
+
     } else {
 
         const noDuplicates = document.createElement("li");
@@ -167,12 +176,7 @@ export async function loadArtistAlbums() {
         noDuplicates.textContent = "Nessun album trovato.";
         sameArtistList.appendChild(noDuplicates);
 
-
     }
 
-
-
-    
-    
 }
 

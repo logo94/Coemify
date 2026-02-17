@@ -13,10 +13,6 @@ function formatDuration(seconds) {
 let batchMode = false;
 let batchTracks = [];
 
-export function isBatchMode() {
-    return batchMode;
-}
-
 export function setBatchMode(mode) {
     batchMode = mode;
 }
@@ -25,125 +21,15 @@ export function getBatchTracks() {
     return batchTracks;
 }
 
-export async function firstUpload() {
-        
-    const fileInput = document.getElementById("audioFile");
-    if (!fileInput.files.length) return alert("Seleziona un file!");
-
-    const formData = new FormData();
-    formData.append("file", fileInput.files[0]);
-
-    // Mostra lo spinner di caricamento
-    const spinner = document.getElementById("uploadSpinner");
-    spinner.style.display = "inline-block";
-
-    // Nascondi lo spinner dopo la risposta
-    spinner.style.display = "none";
-
-    const data = await apiRequest("/api/upload-temp", {
-        method: "POST",
-        body: formData
-    })
-
-    // Mostra la dashboard
-    document.getElementById("uploadSection").style.display = "none";
-    document.getElementById("dashboardContent").style.display = "flex";
-
-    // Popola i metadati
-    const md = data.metadata;
-    document.getElementById("title").value = md.title || "";
-    document.getElementById("artist").value = md.artist || "";
-    document.getElementById("album").value = md.album || "";
-    document.getElementById("genre").value = md.genre || "";
-    document.getElementById("duration").value = md.duration || "";
-    document.getElementById("release_date").value = md.release_date || "";
-    
-    if (md.track_number !== undefined && md.track_number !== null) {
-        document.getElementById("track_number").value = md.track_number;
-    }
-
-    /*if (md.cover) {
-        document.getElementById("coverImg").src = md.cover;
-    }*/
-
-    // Salva il path temporaneo
-    document.getElementById("tempFile").value = data.temp_file;
-}
-
-export async function finalUpload() {
-
-    // Check if cover is set
-    const coverImg = document.getElementById("coverImg");
-    const coverFile = document.getElementById("coverFile").files[0];
-    const hasValidCover = coverFile || (coverImg.src && !coverImg.src.includes("/static/img/default.png"));
-
-    if (!hasValidCover) {
-        return showAlert("Copertina obbligatoria", 'warning');
-    }
-
-    // Disable buttons and show loading
-    const saveBtn = document.getElementById("finalUpload");
-    const searchBtn = document.getElementById("search-meta");
-    saveBtn.disabled = true;
-    searchBtn.disabled = true;
-    saveBtn.textContent = "Caricamento...";
-
-    const formData = new FormData();
-
-    // Aggiungi i dati dal form
-    formData.append("temp_file", document.getElementById("tempFile").value); // File temporaneo
-    formData.append("title", document.getElementById("title").value);  // Titolo
-    formData.append("artist", document.getElementById("artist").value);  // Artista
-    formData.append("album", document.getElementById("album").value);  // Album
-    formData.append("genre", document.getElementById("genre").value);  // Genere
-    formData.append("duration", document.getElementById("duration").value);  // Durata
-    formData.append("release_date", document.getElementById("release_date").value);  // Anno
-    
-    if (document.getElementById("track_number")) {
-        formData.append("track_number", document.getElementById("track_number").value);  // Traccia N°
-    } else {
-        formData.append("track_number", "1");  // Traccia N° vuota se non specificata
-    }
-
-    // Aggiungi il file di copertura se presente
-    if (coverFile) {
-        formData.append("cover", coverFile);
-    }
-
-    document.getElementById("uploadSpinner").style.display = "inline-block";
-
-    try {
-
-        const data = await apiRequest("/api/upload-final", {
-            method: "POST",
-            body: formData
-        });
-
-        showAlert(data.detail || "File caricato con successo!", 'success');
-                
-        
-        setTimeout(() => {
-            location.reload();
-        }, 3000);
-
-    } catch (error) {
-        console.error("Errore durante l'upload:", error);
-        showAlert("Errore durante l'upload:" + error, 'danger');
-    } finally {
-        document.getElementById("uploadSpinner").style.display = "none";
-        // Re-enable buttons
-        const saveBtn = document.getElementById("finalUpload");
-        const searchBtn = document.getElementById("search-meta");
-        saveBtn.disabled = false;
-        searchBtn.disabled = false;
-        saveBtn.textContent = "Salva in Navidrome";
-    }
-}
 
 // Batch upload functions for multi-file album upload
 
-export async function batchFirstUpload(files) {
-    if (!files || files.length === 0) return;
+export async function firstUpload(files) {
+    
+    if (!files || files.length === 0) {
+        showAlert("Nessun file selezionato", 'warning');
+        return;
+    }
 
     const formData = new FormData();
     for (const file of files) {
@@ -154,17 +40,24 @@ export async function batchFirstUpload(files) {
     spinner.style.display = "inline-block";
 
     try {
-        const data = await apiRequest("/api/upload-temp-batch", {
+        const data = await apiRequest("/api/upload-temp", {
             method: "POST",
             body: formData
         });
 
-        if (!data) return;
+        if (!data) {
+            showAlert("Nessuna risposta dal server", 'danger');
+            return;
+        } 
 
         spinner.style.display = "none";
 
+        if (data.errors && data.errors.length > 0) {
+            data.errors.forEach(err => showAlert("Errore: " + err, 'danger'));
+            return;
+        }
+
         // Set batch mode
-        batchMode = true;
         batchTracks = data.tracks;
 
         // Show dashboard
@@ -172,15 +65,11 @@ export async function batchFirstUpload(files) {
         document.getElementById("dashboardContent").style.display = "flex";
 
         // Populate shared metadata from first file
-        const shared = data.shared;
+        const shared = data.album;
         document.getElementById("artist").value = shared.artist || "";
         document.getElementById("album").value = shared.album || "";
         document.getElementById("genre").value = shared.genre || "";
         document.getElementById("release_date").value = shared.release_date || "";
-
-        // Hide single-file title/duration fields (not used in batch mode)
-        document.getElementById("title").closest(".mb-3").style.display = "none";
-        document.getElementById("duration").closest(".mb-3").style.display = "none";
 
         if (shared.cover) {
             document.getElementById("coverImg").src = shared.cover;
@@ -193,32 +82,39 @@ export async function batchFirstUpload(files) {
         trackList.innerHTML = "";
 
         data.tracks.forEach((track, index) => {
+            const trackBox = document.createElement("div");
+            trackBox.className = "card track-card m-2 p-2 rounded";
             const trackItem = document.createElement("div");
-            trackItem.className = "track-item mb-2 p-2 bg-dark rounded";
+            trackItem.className = "track-item p-1 rounded";
             const formattedDuration = formatDuration(track.duration);
             // Use original track number from metadata, or fallback to index + 1
             const trackNumber = track.track_number || (index + 1);
             trackItem.innerHTML = `
                 <div class="d-flex align-items-center">
                     <input type="number"
-                           class="form-control form-control-sm track-number me-2"
-                           data-index="${index}"
-                           value="${trackNumber}"
-                           min="1"
-                           style="width: 50px; text-align: center;">
-                    <input type="text"
-                           class="form-control form-control-sm track-title"
-                           data-index="${index}"
-                           value="${track.title || ''}"
-                           placeholder="Titolo traccia">
-                    <span class="text-white ms-2 small" style="min-width: 45px;">${formattedDuration}</span>
+                        class="form-control form-control-sm border-0 border-bottom track-number me-2"
+                        style="width: 30px;"
+                        value="${trackNumber}"
+                        min="1">
+
+                    <div class="position-relative w-100">
+                        <input type="text"
+                            class="form-control form-control-sm border-0 border-bottom w-100 title track-title"
+                            data-index="${index}"
+                            data-tempfile="${track.temp_file}"
+                            value="${track.title || track.original_filename.replace(/\.[^/.]+$/, "")}"
+                            placeholder="Titolo traccia">
+
+                        <span class="duplicate-badge">Duplicato</span>
+                    </div>
+
+                    <span class="ms-2 duration small">${formattedDuration}</span>
                 </div>
             `;
-            trackList.appendChild(trackItem);
-        });
 
-        // Update file info
-        document.getElementById("fileInfo").textContent = `${files.length} file selezionati`;
+            trackBox.appendChild(trackItem);
+            trackList.appendChild(trackBox);
+        });
 
     } catch (error) {
         console.error("Errore durante l'upload batch:", error);
@@ -228,7 +124,7 @@ export async function batchFirstUpload(files) {
     }
 }
 
-export async function batchFinalUpload() {
+export async function finalUpload() {
 
     // Check if cover is set
     const coverImg = document.getElementById("coverImg");
@@ -236,7 +132,8 @@ export async function batchFinalUpload() {
     const hasValidCover = coverFile || (coverImg.src && !coverImg.src.includes("/static/img/default.png"));
 
     if (!hasValidCover) {
-        return showAlert("Copertina obbligatoria", 'warning');
+        showAlert("Copertina obbligatoria", 'warning');
+        return; 
     }
 
     // Disable buttons and show loading
@@ -253,17 +150,18 @@ export async function batchFinalUpload() {
     const release_date = document.getElementById("release_date").value;
 
     // Gather track data from inputs
-    const trackTitleInputs = document.querySelectorAll(".track-title");
-    const trackNumberInputs = document.querySelectorAll(".track-number");
     const tracksData = [];
 
-    trackTitleInputs.forEach((input, index) => {
-        const track = batchTracks[index];
-        const trackNumber = trackNumberInputs[index]?.value || (index + 1);
+    const trackCards = document.querySelectorAll(".track-card");
+    trackCards.forEach(card => {
+        const trackNumber = card.querySelector(".track-number").value;
+        const titleInput = card.querySelector(".title").value;
+        const tempFile = card.querySelector(".track-title").dataset.tempfile;
+        const duration = card.querySelector(".duration").textContent;
         tracksData.push({
-            temp_file: track.temp_file,
-            title: input.value || track.title,
-            duration: track.duration,
+            temp_file: tempFile,
+            title: titleInput,
+            duration: duration,
             track_number: parseInt(trackNumber, 10)
         });
     });
@@ -283,13 +181,13 @@ export async function batchFinalUpload() {
     document.getElementById("uploadSpinner").style.display = "inline-block";
 
     try {
-        const data = await apiRequest("/api/upload-final-batch", {
+        const data = await apiRequest("/api/upload-final", {
             method: "POST",
             body: formData
         });
 
         if (data.errors && data.errors.length > 0) {
-            showAlert(data.message + ": " + data.errors.join(", "), 'warning');
+            errors.forEach(err => showAlert("Errore: " + err, 'danger'));
         } else {
             showAlert(data.message || "Album caricato con successo!", 'success');
         }
